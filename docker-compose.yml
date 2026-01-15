@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ecommerce-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Jitender@123
+      POSTGRES_DB: ecommerce_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    container_name: ecommerce-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: Jitender@123
+      DB_NAME: ecommerce_db
+      JWT_SECRET: iijifdsfsdfnlsfdssdfsdi3lnds3323kndsdfnlsfdssdfsdi3lnds3323kndsdfnlsfdssdfsdi3lnds3323knds
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:
