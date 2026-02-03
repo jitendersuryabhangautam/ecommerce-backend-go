@@ -27,6 +27,7 @@ type orderService struct {
 	cartRepo    repository.CartRepository
 	productRepo repository.ProductRepository
 	cartSvc     CartService
+	paymentSvc  PaymentService
 }
 
 func NewOrderService(
@@ -34,12 +35,14 @@ func NewOrderService(
 	cartRepo repository.CartRepository,
 	productRepo repository.ProductRepository,
 	cartSvc CartService,
+	paymentSvc PaymentService,
 ) OrderService {
 	return &orderService{
 		orderRepo:   orderRepo,
 		cartRepo:    cartRepo,
 		productRepo: productRepo,
 		cartSvc:     cartSvc,
+		paymentSvc:  paymentSvc,
 	}
 }
 
@@ -106,6 +109,7 @@ func (s *orderService) CreateOrder(ctx context.Context, userID uuid.UUID, req mo
 		OrderNumber:     generateOrderNumber(),
 		TotalAmount:     totalAmount,
 		Status:          models.OrderPending,
+		PaymentMethod:   req.PaymentMethod,
 		ShippingAddress: req.ShippingAddress,
 		BillingAddress:  req.BillingAddress,
 		Items:           orderItems,
@@ -129,6 +133,14 @@ func (s *orderService) CreateOrder(ctx context.Context, userID uuid.UUID, req mo
 	err = tx.Commit(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Create payment immediately for card payments
+	if req.PaymentMethod == "cc" || req.PaymentMethod == "dc" {
+		_, err = s.paymentSvc.CreatePaymentForOrder(ctx, order.ID, req.PaymentMethod, models.PaymentCompleted)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return order, nil
@@ -198,7 +210,25 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID,
 		return fmt.Errorf("invalid status transition from %s to %s", order.Status, status)
 	}
 
-	return s.orderRepo.UpdateStatus(ctx, orderID, status)
+	if err := s.orderRepo.UpdateStatus(ctx, orderID, status); err != nil {
+		return err
+	}
+
+	// For COD, create payment when delivered
+	if status == models.OrderDelivered && order.PaymentMethod == "cod" {
+		existing, err := s.paymentSvc.GetPaymentByOrderID(ctx, orderID)
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			_, err := s.paymentSvc.CreatePaymentForOrder(ctx, orderID, "cod", models.PaymentCompleted)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func isValidStatusTransition(from, to models.OrderStatus) bool {

@@ -31,8 +31,8 @@ func InitRepositories(db *pgxpool.Pool, cfg *config.Config) *Repositories {
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpiry)
 	productService := service.NewProductService(productRepo)
 	cartService := service.NewCartService(cartRepo, productRepo, productService)
-	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, cartService)
 	paymentService := service.NewPaymentService(paymentRepo, orderRepo)
+	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, cartService, paymentService)
 	returnService := service.NewReturnService(returnRepo, orderRepo, paymentService, productRepo)
 
 	// Initialize handlers

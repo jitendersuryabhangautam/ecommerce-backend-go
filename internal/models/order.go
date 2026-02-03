@@ -16,6 +16,7 @@ const (
 	OrderCompleted  OrderStatus = "completed"
 	OrderCancelled  OrderStatus = "cancelled"
 	OrderRefunded   OrderStatus = "refunded"
+	OrderReturnRequested OrderStatus = "return_requested"
 )
 
 type Order struct {
@@ -24,6 +25,7 @@ type Order struct {
 	OrderNumber     string      `json:"order_number"`
 	TotalAmount     float64     `json:"total_amount"`
 	Status          OrderStatus `json:"status"`
+	PaymentMethod   string      `json:"payment_method"`
 	ShippingAddress Address     `json:"shipping_address"`
 	BillingAddress  Address     `json:"billing_address"`
 	Items           []OrderItem `json:"items"`
@@ -54,6 +56,7 @@ type Address struct {
 type CreateOrderRequest struct {
 	ShippingAddress Address `json:"shipping_address" validate:"required"`
 	BillingAddress  Address `json:"billing_address" validate:"required"`
+	PaymentMethod   string  `json:"payment_method" validate:"required,oneof=cc dc cod"`
 }
 
 type UpdateOrderStatusRequest struct {

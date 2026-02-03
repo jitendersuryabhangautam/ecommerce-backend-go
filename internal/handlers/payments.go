@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"ecommerce-backend/internal/middleware"
+	"ecommerce-backend/internal/models"
 	"ecommerce-backend/internal/service"
 	"ecommerce-backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type PaymentHandler struct {
@@ -17,19 +19,36 @@ func NewPaymentHandler(paymentService service.PaymentService) *PaymentHandler {
 }
 
 func (h *PaymentHandler) CreatePayment(c *gin.Context) {
-	_, err := middleware.GetUserIDFromGin(c)
+	userID, err := middleware.GetUserIDFromGin(c)
 	if err != nil {
 		utils.GinUnauthorizedResponse(c, err.Error())
 		return
 	}
 
-	var req map[string]interface{}
+	var req models.CreatePaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.GinBadRequestResponse(c, "Invalid request body", err)
 		return
 	}
 
-	utils.GinCreatedResponse(c, "Payment created successfully", nil)
+	if errors := utils.ValidateStruct(req); errors != nil {
+		utils.GinValidationErrorResponse(c, errors)
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Invalid user ID", err)
+		return
+	}
+
+	payment, err := h.paymentService.CreatePayment(c.Request.Context(), req, userUUID)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Failed to create payment", err)
+		return
+	}
+
+	utils.GinCreatedResponse(c, "Payment created successfully", payment)
 }
 
 func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
@@ -39,13 +58,24 @@ func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
 		return
 	}
 
-	var req map[string]interface{}
+	var req models.VerifyPaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.GinBadRequestResponse(c, "Invalid request body", err)
 		return
 	}
 
-	utils.GinSuccessResponse(c, "Payment verified successfully", nil)
+	if errors := utils.ValidateStruct(req); errors != nil {
+		utils.GinValidationErrorResponse(c, errors)
+		return
+	}
+
+	payment, err := h.paymentService.VerifyPayment(c.Request.Context(), req)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Failed to verify payment", err)
+		return
+	}
+
+	utils.GinSuccessResponse(c, "Payment verified successfully", payment)
 }
 
 func (h *PaymentHandler) GetPaymentByOrder(c *gin.Context) {
@@ -54,5 +84,24 @@ func (h *PaymentHandler) GetPaymentByOrder(c *gin.Context) {
 		utils.GinUnauthorizedResponse(c, err.Error())
 		return
 	}
-	utils.GinSuccessResponse(c, "Payment retrieved successfully", nil)
+
+	orderID := c.Param("id")
+	orderUUID, err := uuid.Parse(orderID)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Invalid order ID", err)
+		return
+	}
+
+	payment, err := h.paymentService.GetPaymentByOrderID(c.Request.Context(), orderUUID)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Failed to retrieve payment", err)
+		return
+	}
+
+	if payment == nil {
+		utils.GinNotFoundResponse(c, "Payment not found")
+		return
+	}
+
+	utils.GinSuccessResponse(c, "Payment retrieved successfully", payment)
 }

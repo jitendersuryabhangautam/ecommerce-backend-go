@@ -16,6 +16,7 @@ type PaymentService interface {
 	VerifyPayment(ctx context.Context, req models.VerifyPaymentRequest) (*models.Payment, error)
 	ProcessRefund(ctx context.Context, paymentID uuid.UUID, amount float64) error
 	GetPaymentByOrderID(ctx context.Context, orderID uuid.UUID) (*models.Payment, error)
+	CreatePaymentForOrder(ctx context.Context, orderID uuid.UUID, method string, status models.PaymentStatus) (*models.Payment, error)
 }
 
 type paymentService struct {
@@ -53,13 +54,14 @@ func (s *paymentService) CreatePayment(ctx context.Context, req models.CreatePay
 	}
 
 	// Create payment
+	transactionID := "TXN-" + uuid.New().String()[:8]
 	payment := &models.Payment{
 		ID:             uuid.New(),
 		OrderID:        req.OrderID,
 		Amount:         order.TotalAmount,
 		Status:         models.PaymentPending,
 		PaymentMethod:  req.PaymentMethod,
-		TransactionID:  "",
+		TransactionID:  transactionID,
 		PaymentDetails: make(map[string]interface{}),
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
@@ -139,4 +141,44 @@ func (s *paymentService) ProcessRefund(ctx context.Context, paymentID uuid.UUID,
 
 func (s *paymentService) GetPaymentByOrderID(ctx context.Context, orderID uuid.UUID) (*models.Payment, error) {
 	return s.paymentRepo.GetByOrderID(ctx, orderID)
+}
+
+func (s *paymentService) CreatePaymentForOrder(ctx context.Context, orderID uuid.UUID, method string, status models.PaymentStatus) (*models.Payment, error) {
+	// Get order
+	order, err := s.orderRepo.GetByID(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order == nil {
+		return nil, errors.New("order not found")
+	}
+
+	// Check if payment already exists
+	existingPayment, err := s.paymentRepo.GetByOrderID(ctx, orderID)
+	if err == nil && existingPayment != nil {
+		return nil, errors.New("payment already exists for this order")
+	}
+
+	transactionID := "TXN-" + uuid.New().String()[:8]
+	payment := &models.Payment{
+		ID:             uuid.New(),
+		OrderID:        orderID,
+		Amount:         order.TotalAmount,
+		Status:         status,
+		PaymentMethod:  method,
+		TransactionID:  transactionID,
+		PaymentDetails: make(map[string]interface{}),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+
+	if err := s.paymentRepo.Create(ctx, payment); err != nil {
+		return nil, err
+	}
+
+	if status == models.PaymentCompleted {
+		_ = s.orderRepo.UpdateStatus(ctx, orderID, models.OrderProcessing)
+	}
+
+	return payment, nil
 }

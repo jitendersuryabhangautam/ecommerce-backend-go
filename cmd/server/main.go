@@ -113,6 +113,10 @@ func main() {
 		// User management
 		admin.GET("/users", repos.AuthHandler.GetAllUsers)
 		admin.PUT("/users/:id/role", repos.AuthHandler.UpdateUserRole)
+
+		// Return management
+		admin.GET("/returns", repos.ReturnHandler.GetAllReturns)
+		admin.POST("/returns/:returnId/process", repos.ReturnHandler.ProcessReturn)
 	}
 
 	// Print API documentation

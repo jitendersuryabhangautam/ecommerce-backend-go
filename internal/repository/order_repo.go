@@ -54,9 +54,9 @@ func (r *orderRepository) Create(ctx context.Context, order *models.Order) error
 func (r *orderRepository) CreateWithTx(ctx context.Context, tx pgx.Tx, order *models.Order) error {
 	// Insert order
 	orderQuery := `
-        INSERT INTO orders (id, user_id, order_number, total_amount, status, 
+        INSERT INTO orders (id, user_id, order_number, total_amount, status, payment_method,
                           shipping_address, billing_address)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING created_at, updated_at
     `
 
@@ -66,6 +66,7 @@ func (r *orderRepository) CreateWithTx(ctx context.Context, tx pgx.Tx, order *mo
 		order.OrderNumber,
 		order.TotalAmount,
 		order.Status,
+		order.PaymentMethod,
 		order.ShippingAddress,
 		order.BillingAddress,
 	)
@@ -100,7 +101,7 @@ func (r *orderRepository) CreateWithTx(ctx context.Context, tx pgx.Tx, order *mo
 func (r *orderRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Order, error) {
 	// Get order
 	orderQuery := `
-        SELECT id, user_id, order_number, total_amount, status, 
+        SELECT id, user_id, order_number, total_amount, status, payment_method,
                shipping_address, billing_address, created_at, updated_at
         FROM orders
         WHERE id = $1
@@ -113,6 +114,7 @@ func (r *orderRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Or
 		&order.OrderNumber,
 		&order.TotalAmount,
 		&order.Status,
+		&order.PaymentMethod,
 		&order.ShippingAddress,
 		&order.BillingAddress,
 		&order.CreatedAt,
@@ -183,7 +185,7 @@ func (r *orderRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Or
 
 func (r *orderRepository) GetByOrderNumber(ctx context.Context, orderNumber string) (*models.Order, error) {
 	orderQuery := `
-        SELECT id, user_id, order_number, total_amount, status, 
+        SELECT id, user_id, order_number, total_amount, status, payment_method,
                shipping_address, billing_address, created_at, updated_at
         FROM orders
         WHERE order_number = $1
@@ -196,6 +198,7 @@ func (r *orderRepository) GetByOrderNumber(ctx context.Context, orderNumber stri
 		&order.OrderNumber,
 		&order.TotalAmount,
 		&order.Status,
+		&order.PaymentMethod,
 		&order.ShippingAddress,
 		&order.BillingAddress,
 		&order.CreatedAt,
@@ -226,7 +229,7 @@ func (r *orderRepository) GetByUserID(ctx context.Context, userID uuid.UUID, pag
 
 	// Get orders with pagination
 	ordersQuery := `
-        SELECT id, user_id, order_number, total_amount, status, 
+        SELECT id, user_id, order_number, total_amount, status, payment_method,
                shipping_address, billing_address, created_at, updated_at
         FROM orders
         WHERE user_id = $1
@@ -249,6 +252,7 @@ func (r *orderRepository) GetByUserID(ctx context.Context, userID uuid.UUID, pag
 			&order.OrderNumber,
 			&order.TotalAmount,
 			&order.Status,
+			&order.PaymentMethod,
 			&order.ShippingAddress,
 			&order.BillingAddress,
 			&order.CreatedAt,
@@ -289,7 +293,7 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 
 	// Get orders with pagination
 	ordersQuery := fmt.Sprintf(`
-        SELECT id, user_id, order_number, total_amount, status, 
+        SELECT id, user_id, order_number, total_amount, status, payment_method,
                shipping_address, billing_address, created_at, updated_at
         FROM orders %s
         ORDER BY created_at DESC
@@ -313,6 +317,7 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 			&order.OrderNumber,
 			&order.TotalAmount,
 			&order.Status,
+			&order.PaymentMethod,
 			&order.ShippingAddress,
 			&order.BillingAddress,
 			&order.CreatedAt,

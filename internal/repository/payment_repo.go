@@ -6,6 +6,7 @@ import (
 	"ecommerce-backend/internal/models"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -94,6 +95,9 @@ func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID uuid.UUID)
 		&payment.UpdatedAt,
 	)
 
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

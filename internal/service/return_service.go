@@ -87,13 +87,18 @@ func (s *returnService) CreateReturn(ctx context.Context, req models.CreateRetur
 		UserID:       userID,
 		Reason:       req.Reason,
 		Status:       models.ReturnRequested,
-		RefundAmount: 0,
+		RefundAmount: order.TotalAmount,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
 
 	err = s.returnRepo.Create(ctx, returnReq)
 	if err != nil {
+		return nil, err
+	}
+
+	// Mark order as return requested
+	if err := s.orderRepo.UpdateStatus(ctx, order.ID, models.OrderReturnRequested); err != nil {
 		return nil, err
 	}
 

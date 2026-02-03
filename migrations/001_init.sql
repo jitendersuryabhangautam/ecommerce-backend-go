@@ -53,8 +53,9 @@ CREATE TABLE orders (
     order_number VARCHAR(50) UNIQUE NOT NULL,
     total_amount DECIMAL(10, 2) NOT NULL CHECK (total_amount >= 0),
     status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled', 'refunded')
+        status IN ('pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled', 'refunded', 'return_requested')
     ),
+    payment_method VARCHAR(10) NOT NULL CHECK (payment_method IN ('cc', 'dc', 'cod')),
     shipping_address JSONB NOT NULL,
     billing_address JSONB NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
