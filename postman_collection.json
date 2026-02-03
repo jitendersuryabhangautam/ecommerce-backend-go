@@ -1,0 +1,217 @@
+{
+  "info": {
+    "name": "Ecommerce Backend Go API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://ecommerce-backend-go-production.up.railway.app"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "order_id",
+      "value": ""
+    },
+    {
+      "key": "return_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/health"
+      }
+    },
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/api/v1/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user1@example.com\",\n  \"password\": \"User@1234\",\n  \"first_name\": \"User\",\n  \"last_name\": \"One\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var json = pm.response.json();",
+              "if (json && json.data && json.data.access_token) {",
+              "  pm.collectionVariables.set('access_token', json.data.access_token);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/api/v1/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user1@example.com\",\n  \"password\": \"User@1234\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Get Products",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/api/v1/products"
+      }
+    },
+    {
+      "name": "Add To Cart",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{base_url}}/api/v1/cart/items",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"product_id\": \"{{product_id}}\",\n  \"quantity\": 1\n}"
+        }
+      }
+    },
+    {
+      "name": "Validate Cart",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{base_url}}/api/v1/cart/validate"
+      }
+    },
+    {
+      "name": "Create Order",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var json = pm.response.json();",
+              "if (json && json.data && json.data.id) {",
+              "  pm.collectionVariables.set('order_id', json.data.id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{base_url}}/api/v1/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"shipping_address\": {\n    \"full_name\": \"User One\",\n    \"street\": \"123 Main St\",\n    \"city\": \"Delhi\",\n    \"state\": \"Delhi\",\n    \"country\": \"India\",\n    \"postal_code\": \"110001\",\n    \"phone\": \"9000000000\"\n  },\n  \"billing_address\": {\n    \"full_name\": \"User One\",\n    \"street\": \"123 Main St\",\n    \"city\": \"Delhi\",\n    \"state\": \"Delhi\",\n    \"country\": \"India\",\n    \"postal_code\": \"110001\",\n    \"phone\": \"9000000000\"\n  },\n  \"payment_method\": \"cc\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Create Payment (Manual)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{base_url}}/api/v1/payments",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"payment_method\": \"cc\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Get Payment By Order",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{base_url}}/api/v1/orders/{{order_id}}/payment"
+      }
+    },
+    {
+      "name": "Create Return",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var json = pm.response.json();",
+              "if (json && json.data && json.data.id) {",
+              "  pm.collectionVariables.set('return_id', json.data.id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{base_url}}/api/v1/returns",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"reason\": \"Product damaged on arrival\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Process Return (Admin)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{base_url}}/api/v1/admin/returns/{{return_id}}/process",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"approved\",\n  \"refund_amount\": 0\n}"
+        }
+      }
+    },
+    {
+      "name": "Update Order Status (Admin)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": "{{base_url}}/api/v1/admin/orders/{{order_id}}/status",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"shipped\"\n}"
+        }
+      }
+    }
+  ]
+}

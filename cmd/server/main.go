@@ -35,7 +35,7 @@ func main() {
 	router := gin.Default()
 
 	// Apply global middleware
-	router.Use(middleware.GinCORSMiddleware())
+	router.Use(middleware.GinCORSMiddleware(cfg.AllowedOrigins))
 	router.Use(middleware.GinRecovery())
 	router.Use(middleware.GinLogging())
 	router.Use(middleware.GinRequestID())

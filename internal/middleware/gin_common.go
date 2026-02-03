@@ -44,22 +44,27 @@ func GinRequestID() gin.HandlerFunc {
 }
 
 // GinCORSMiddleware handles CORS
-func GinCORSMiddleware() gin.HandlerFunc {
+func GinCORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 
-		// Allow specific origins
-		allowedOrigins := map[string]bool{
-			"http://localhost:3000": true,
-			"http://localhost:8080": true,
-			"http://127.0.0.1:3000": true,
-			"http://127.0.0.1:8080": true,
+		allowed := false
+		allowAll := false
+		for _, o := range allowedOrigins {
+			if o == "*" {
+				allowAll = true
+				break
+			}
+			if o == origin {
+				allowed = true
+				break
+			}
 		}
 
-		if allowedOrigins[origin] {
+		if allowAll && origin != "" {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-		} else {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		} else if allowed {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 		}
 
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")

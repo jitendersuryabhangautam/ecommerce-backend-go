@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -37,8 +38,18 @@ func LoadConfig() *Config {
 	// Parse stock reservation TTL
 	stockTTLMinutes, _ := strconv.Atoi(getEnv("STOCK_RESERVATION_TTL_MINUTES", "10"))
 
-	// Parse allowed origins
+	// Parse allowed origins (comma-separated)
 	allowedOrigins := getEnv("ALLOWED_ORIGINS", "http://localhost:3000")
+	origins := []string{}
+	for _, o := range strings.Split(allowedOrigins, ",") {
+		trimmed := strings.TrimSpace(o)
+		if trimmed != "" {
+			origins = append(origins, trimmed)
+		}
+	}
+	if len(origins) == 0 {
+		origins = []string{"http://localhost:3000"}
+	}
 
 	return &Config{
 		Port: getEnv("PORT", "8080"),
@@ -54,7 +65,7 @@ func LoadConfig() *Config {
 		JWTSecret: getEnv("JWT_SECRET", "default-secret-key-change-in-production"),
 		JWTExpiry: time.Duration(jwtExpiryHours) * time.Hour,
 
-		AllowedOrigins: []string{allowedOrigins},
+		AllowedOrigins: origins,
 
 		StockReservationTTL: time.Duration(stockTTLMinutes) * time.Minute,
 	}
