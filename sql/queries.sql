@@ -1,6 +1,18 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Drop existing objects (safe reset)
+DROP TABLE IF EXISTS stock_reservations CASCADE;
+DROP TABLE IF EXISTS returns CASCADE;
+DROP TABLE IF EXISTS payments CASCADE;
+DROP TABLE IF EXISTS order_items CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS cart_items CASCADE;
+DROP TABLE IF EXISTS carts CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
+
 -- Users table
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -55,6 +67,7 @@ CREATE TABLE orders (
     status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (
         status IN ('pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled', 'refunded')
     ),
+    payment_method VARCHAR(10) NOT NULL CHECK (payment_method IN ('cc', 'dc', 'cod')),
     shipping_address JSONB NOT NULL,
     billing_address JSONB NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -161,3 +174,156 @@ INSERT INTO products (sku, name, description, price, stock_quantity, category, i
 ('BOK-001', 'Go Programming', 'Learn Go programming from beginner to expert', 39.99, 100, 'Books', 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c'),
 ('HD-001', 'Wireless Headphones', 'Noise cancelling wireless headphones', 199.99, 75, 'Audio', 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e')
 ON CONFLICT (sku) DO NOTHING;
+
+-- Sample users (password hash is a placeholder)
+INSERT INTO users (email, password_hash, first_name, last_name, role) VALUES
+('alice@example.com', '$2a$10$YourHashedPasswordHere', 'Alice', 'Nguyen', 'customer'),
+('bob@example.com', '$2a$10$YourHashedPasswordHere', 'Bob', 'Singh', 'customer'),
+('carol@example.com', '$2a$10$YourHashedPasswordHere', 'Carol', 'Diaz', 'customer')
+ON CONFLICT (email) DO NOTHING;
+
+-- Sample carts for users
+WITH u AS (
+    SELECT id, email FROM users WHERE email IN ('alice@example.com', 'bob@example.com', 'carol@example.com')
+)
+INSERT INTO carts (user_id)
+SELECT id FROM u
+ON CONFLICT (user_id) DO NOTHING;
+
+-- Sample cart items
+WITH
+    c AS (
+        SELECT c.id AS cart_id, u.email
+        FROM carts c
+        JOIN users u ON u.id = c.user_id
+        WHERE u.email IN ('alice@example.com', 'bob@example.com')
+    ),
+    p AS (
+        SELECT id, sku FROM products WHERE sku IN ('LAP-001', 'PHN-001', 'BOK-001')
+    )
+INSERT INTO cart_items (cart_id, product_id, quantity)
+SELECT c.cart_id,
+       CASE c.email
+           WHEN 'alice@example.com' THEN (SELECT id FROM p WHERE sku = 'LAP-001')
+           ELSE (SELECT id FROM p WHERE sku = 'BOK-001')
+       END,
+       CASE c.email
+           WHEN 'alice@example.com' THEN 1
+           ELSE 2
+       END
+FROM c
+ON CONFLICT (cart_id, product_id) DO NOTHING;
+
+-- Sample orders with items and payments
+WITH
+    u AS (
+        SELECT id, email FROM users WHERE email IN ('alice@example.com', 'bob@example.com')
+    ),
+    p AS (
+        SELECT id, sku, price FROM products WHERE sku IN ('LAP-001', 'PHN-001', 'HD-001')
+    ),
+    o AS (
+        INSERT INTO orders (user_id, order_number, total_amount, status, payment_method, shipping_address, billing_address)
+        SELECT
+            u.id,
+            CASE u.email
+                WHEN 'alice@example.com' THEN 'ORD-1001'
+                ELSE 'ORD-1002'
+            END,
+            CASE u.email
+                WHEN 'alice@example.com' THEN (SELECT price FROM p WHERE sku = 'LAP-001')
+                ELSE (SELECT price FROM p WHERE sku = 'HD-001') * 2
+            END,
+            'processing',
+            'cc',
+            jsonb_build_object(
+                'full_name', CASE u.email WHEN 'alice@example.com' THEN 'Alice Nguyen' ELSE 'Bob Singh' END,
+                'street', '123 Main St',
+                'city', 'Austin',
+                'state', 'TX',
+                'country', 'USA',
+                'postal_code', '78701',
+                'phone', '+1-512-555-0101'
+            ),
+            jsonb_build_object(
+                'full_name', CASE u.email WHEN 'alice@example.com' THEN 'Alice Nguyen' ELSE 'Bob Singh' END,
+                'street', '123 Main St',
+                'city', 'Austin',
+                'state', 'TX',
+                'country', 'USA',
+                'postal_code', '78701',
+                'phone', '+1-512-555-0101'
+            )
+        FROM u
+        ON CONFLICT (order_number) DO NOTHING
+        RETURNING id, user_id, order_number
+    )
+INSERT INTO order_items (order_id, product_id, quantity, price_at_time)
+SELECT
+    o.id,
+    CASE o.order_number
+        WHEN 'ORD-1001' THEN (SELECT id FROM p WHERE sku = 'LAP-001')
+        ELSE (SELECT id FROM p WHERE sku = 'HD-001')
+    END,
+    CASE o.order_number
+        WHEN 'ORD-1001' THEN 1
+        ELSE 2
+    END,
+    CASE o.order_number
+        WHEN 'ORD-1001' THEN (SELECT price FROM p WHERE sku = 'LAP-001')
+        ELSE (SELECT price FROM p WHERE sku = 'HD-001')
+    END
+FROM o
+ON CONFLICT DO NOTHING;
+
+-- Payments for sample orders
+WITH o AS (
+    SELECT id, order_number, total_amount FROM orders WHERE order_number IN ('ORD-1001', 'ORD-1002')
+)
+INSERT INTO payments (order_id, amount, status, payment_method, transaction_id, payment_details)
+SELECT
+    o.id,
+    o.total_amount,
+    'completed',
+    'credit_card',
+    'txn_' || replace(o.order_number, '-', '_'),
+    jsonb_build_object('provider', 'stripe', 'auth_code', 'AUTH123')
+FROM o
+ON CONFLICT DO NOTHING;
+
+-- Sample returns
+WITH
+    o AS (
+        SELECT id, order_number, user_id, total_amount
+        FROM orders
+        WHERE order_number = 'ORD-1002'
+    )
+INSERT INTO returns (order_id, user_id, reason, status, refund_amount)
+SELECT
+    o.id,
+    o.user_id,
+    'Item arrived damaged',
+    'requested',
+    o.total_amount
+FROM o
+ON CONFLICT DO NOTHING;
+
+-- Sample stock reservations
+WITH
+    c AS (
+        SELECT c.id AS cart_id, u.email
+        FROM carts c
+        JOIN users u ON u.id = c.user_id
+        WHERE u.email = 'alice@example.com'
+    ),
+    p AS (
+        SELECT id FROM products WHERE sku = 'LAP-001'
+    )
+INSERT INTO stock_reservations (product_id, cart_id, quantity, expires_at)
+SELECT
+    (SELECT id FROM p),
+    c.cart_id,
+    1,
+    NOW() + INTERVAL '10 minutes'
+FROM c
+ON CONFLICT (product_id, cart_id) DO NOTHING;
