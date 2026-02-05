@@ -12,8 +12,11 @@ type AdminUserSummary struct {
 }
 
 type AdminOrderItem struct {
-	ProductID uuid.UUID `json:"product_id"`
-	Quantity  int       `json:"quantity"`
+	ProductID   uuid.UUID `json:"product_id"`
+	ProductName string    `json:"product_name"`
+	ProductSKU  string    `json:"product_sku"`
+	Quantity    int       `json:"quantity"`
+	PriceAtTime float64   `json:"price_at_time"`
 }
 
 type AdminOrder struct {

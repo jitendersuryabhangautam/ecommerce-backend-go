@@ -241,10 +241,12 @@ func (r *orderRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*mode
 	fmt.Printf("[ORDER REPO SUCCESS] Order found: %s\n", order.OrderNumber)
 
 	itemsQuery := `
-        SELECT order_id, product_id, quantity
-        FROM order_items
-        WHERE order_id = $1
-        ORDER BY created_at
+        SELECT oi.order_id, oi.product_id, oi.quantity, oi.price_at_time,
+               p.name, p.sku
+        FROM order_items oi
+        JOIN products p ON oi.product_id = p.id
+        WHERE oi.order_id = $1
+        ORDER BY oi.created_at
     `
 
 	rows, err := r.db.Query(ctx, itemsQuery, order.ID)
@@ -256,7 +258,7 @@ func (r *orderRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*mode
 	for rows.Next() {
 		var item models.AdminOrderItem
 		var orderID uuid.UUID
-		if err := rows.Scan(&orderID, &item.ProductID, &item.Quantity); err != nil {
+		if err := rows.Scan(&orderID, &item.ProductID, &item.Quantity, &item.PriceAtTime, &item.ProductName, &item.ProductSKU); err != nil {
 			return nil, err
 		}
 		order.Items = append(order.Items, item)
