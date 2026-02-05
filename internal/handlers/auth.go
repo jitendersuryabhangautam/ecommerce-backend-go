@@ -287,11 +287,17 @@ func (h *AuthHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	updatedUser, err := h.AuthService.UpdateUserRole(c.Request.Context(), userUUID, req.Role)
+	updatedUser, token, err := h.AuthService.UpdateUserRole(c.Request.Context(), userUUID, req.Role)
 	if err != nil {
 		utils.GinBadRequestResponse(c, "Failed to update user role", err)
 		return
 	}
 
-	utils.GinSuccessResponse(c, "User role updated", updatedUser)
+	response := gin.H{
+		"message": "User role updated",
+		"user":    updatedUser,
+		"token":   token,
+	}
+
+	utils.GinSuccessResponse(c, "User role updated successfully", response)
 }
