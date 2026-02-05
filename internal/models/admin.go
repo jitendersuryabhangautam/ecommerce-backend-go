@@ -36,15 +36,15 @@ type AdminReturnOrderSummary struct {
 }
 
 type AdminReturn struct {
-	ID           uuid.UUID              `json:"id"`
-	OrderID      uuid.UUID              `json:"order_id"`
+	ID           uuid.UUID               `json:"id"`
+	OrderID      uuid.UUID               `json:"order_id"`
 	Order        AdminReturnOrderSummary `json:"order"`
-	User         AdminUserSummary       `json:"user"`
-	Reason       string                 `json:"reason"`
-	Status       ReturnStatus           `json:"status"`
-	RefundAmount float64                `json:"refund_amount"`
-	CreatedAt    time.Time              `json:"created_at"`
-	UpdatedAt    time.Time              `json:"updated_at"`
+	User         AdminUserSummary        `json:"user"`
+	Reason       string                  `json:"reason"`
+	Status       ReturnStatus            `json:"status"`
+	RefundAmount float64                 `json:"refund_amount"`
+	CreatedAt    time.Time               `json:"created_at"`
+	UpdatedAt    time.Time               `json:"updated_at"`
 }
 
 type AdminTotals struct {
@@ -61,8 +61,8 @@ type AdminStatusCount struct {
 }
 
 type AdminAnalytics struct {
-	RangeDays      int               `json:"range_days"`
-	Totals         AdminTotals       `json:"totals"`
+	RangeDays      int                `json:"range_days"`
+	Totals         AdminTotals        `json:"totals"`
 	OrdersByStatus []AdminStatusCount `json:"orders_by_status"`
 }
 
