@@ -20,7 +20,7 @@ type AuthService interface {
 	GenerateToken(user *models.User) (string, error)
 	ValidateToken(tokenString string) (*models.User, error)
 	ListUsers(ctx context.Context, page, limit, rangeDays int) ([]models.User, int, error)
-	UpdateUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.User, error)
+	UpdateUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.User, string, error)
 }
 
 type authService struct {
@@ -202,25 +202,31 @@ func (s *authService) ListUsers(ctx context.Context, page, limit, rangeDays int)
 	return users, total, nil
 }
 
-func (s *authService) UpdateUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.User, error) {
+func (s *authService) UpdateUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.User, string, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if user == nil {
-		return nil, errors.New("user not found")
+		return nil, "", errors.New("user not found")
 	}
 
 	if err := s.userRepo.UpdateRole(ctx, userID, role); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	updated, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if updated != nil {
 		updated.PasswordHash = ""
 	}
-	return updated, nil
+
+	token, err := s.GenerateToken(updated)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return updated, token, nil
 }
