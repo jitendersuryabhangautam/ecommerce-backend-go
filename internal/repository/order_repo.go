@@ -187,6 +187,7 @@ func (r *orderRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Or
 }
 
 func (r *orderRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*models.AdminOrder, error) {
+	fmt.Printf("[ORDER REPO] GetAdminByID called for orderID: %s\n", id.String())
 	query := `
         SELECT 
             o.id, o.user_id, o.order_number, o.total_amount, o.status, o.payment_method,
@@ -212,11 +213,14 @@ func (r *orderRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*mode
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
+		fmt.Printf("[ORDER REPO] No rows found for orderID: %s\n", id.String())
 		return nil, nil
 	}
 	if err != nil {
+		fmt.Printf("[ORDER REPO ERROR] Database error: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[ORDER REPO SUCCESS] Order found: %s\n", order.OrderNumber)
 
 	itemsQuery := `
         SELECT order_id, product_id, quantity

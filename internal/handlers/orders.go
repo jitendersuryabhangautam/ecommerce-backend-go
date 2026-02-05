@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"strconv"
 
 	"ecommerce-backend/internal/middleware"
@@ -120,6 +121,22 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 		return
 	}
 
+	// Check if user is admin
+	userRole, _ := middleware.GetUserRoleFromGin(c)
+	if userRole == "admin" {
+		// Admin can view any order
+		log.Printf("[ADMIN] Fetching order details for orderID: %s", orderUUID.String())
+		adminOrder, err := h.orderService.GetOrderAdmin(c.Request.Context(), orderUUID)
+		if err != nil {
+			log.Printf("[ADMIN ERROR] Failed to fetch order: %v", err)
+			utils.GinNotFoundResponse(c, "Order")
+			return
+		}
+		utils.GinSuccessResponse(c, "Order retrieved successfully", adminOrder)
+		return
+	}
+
+	// Regular user can only view their own orders
 	order, err := h.orderService.GetOrder(c.Request.Context(), orderUUID, userUUID)
 	if err != nil {
 		utils.GinNotFoundResponse(c, "Order not found")
@@ -237,12 +254,23 @@ func (h *OrderHandler) GetAdminOrder(c *gin.Context) {
 		return
 	}
 
+	// Debug logging
+	log.Printf("[ADMIN ORDER] Fetching order details for orderID: %s", orderUUID.String())
+
 	order, err := h.orderService.GetOrderAdmin(c.Request.Context(), orderUUID)
 	if err != nil {
+		log.Printf("[ADMIN ORDER ERROR] Failed to fetch order: %v", err)
 		utils.GinNotFoundResponse(c, "Order")
 		return
 	}
 
+	if order == nil {
+		log.Printf("[ADMIN ORDER] Order not found: %s", orderUUID.String())
+		utils.GinNotFoundResponse(c, "Order")
+		return
+	}
+
+	log.Printf("[ADMIN ORDER SUCCESS] Order found: %s, User: %s", order.OrderNumber, order.UserID.String())
 	utils.GinSuccessResponse(c, "Order retrieved successfully", order)
 }
 

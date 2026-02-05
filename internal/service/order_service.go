@@ -198,13 +198,17 @@ func (s *orderService) GetAllOrders(ctx context.Context, page, limit int, status
 }
 
 func (s *orderService) GetOrderAdmin(ctx context.Context, orderID uuid.UUID) (*models.AdminOrder, error) {
+	fmt.Printf("[ORDER SERVICE] GetOrderAdmin called for orderID: %s\n", orderID.String())
 	order, err := s.orderRepo.GetAdminByID(ctx, orderID)
 	if err != nil {
+		fmt.Printf("[ORDER SERVICE ERROR] Repository error: %v\n", err)
 		return nil, err
 	}
 	if order == nil {
+		fmt.Printf("[ORDER SERVICE] Order not found in repository\n")
 		return nil, errors.New("order not found")
 	}
+	fmt.Printf("[ORDER SERVICE SUCCESS] Order found: %s\n", order.OrderNumber)
 	return order, nil
 }
 
