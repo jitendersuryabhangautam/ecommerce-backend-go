@@ -293,7 +293,7 @@ func (r *orderRepository) GetByUserID(ctx context.Context, userID uuid.UUID, pag
                shipping_address, billing_address, created_at, updated_at
         FROM orders
         WHERE user_id = $1
-        ORDER BY o.created_at DESC
+        ORDER BY created_at DESC
         LIMIT $2 OFFSET $3
     `
 

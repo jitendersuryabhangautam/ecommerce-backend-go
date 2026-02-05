@@ -36,6 +36,7 @@ func main() {
 
 	// Apply global middleware
 	router.Use(middleware.GinCORSMiddleware(cfg.AllowedOrigins))
+	router.Use(middleware.NoCacheMiddleware())
 	router.Use(middleware.GinRecovery())
 	router.Use(middleware.GinLogging())
 	router.Use(middleware.GinRequestID())
