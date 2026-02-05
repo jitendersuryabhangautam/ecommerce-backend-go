@@ -151,3 +151,73 @@ func (h *ProductHandler) DeleteProduct(c *gin.Context) {
 
 	utils.GinSuccessResponse(c, "Product deleted successfully", nil)
 }
+
+func (h *ProductHandler) GetAdminProducts(c *gin.Context) {
+	page := 1
+	if p := c.Query("page"); p != "" {
+		if val, err := strconv.Atoi(p); err == nil && val > 0 {
+			page = val
+		}
+	}
+
+	limit := 10
+	if l := c.Query("limit"); l != "" {
+		if val, err := strconv.Atoi(l); err == nil && val > 0 && val <= 100 {
+			limit = val
+		}
+	}
+
+	rangeDays := 30
+	if rd := c.Query("range_days"); rd != "" {
+		if val, err := strconv.Atoi(rd); err == nil && val > 0 {
+			rangeDays = val
+		}
+	}
+
+	products, total, err := h.productService.GetAdminProducts(c.Request.Context(), page, limit, rangeDays)
+	if err != nil {
+		utils.GinInternalErrorResponse(c, "Failed to get products", err)
+		return
+	}
+
+	response := map[string]interface{}{
+		"products": products,
+		"meta": map[string]interface{}{
+			"page":       page,
+			"limit":      limit,
+			"total":      total,
+			"totalPages": (total + limit - 1) / limit,
+		},
+	}
+
+	utils.GinSuccessResponse(c, "Products retrieved successfully", response)
+}
+
+func (h *ProductHandler) GetTopProducts(c *gin.Context) {
+	limit := 10
+	if l := c.Query("limit"); l != "" {
+		if val, err := strconv.Atoi(l); err == nil && val > 0 && val <= 100 {
+			limit = val
+		}
+	}
+
+	rangeDays := 0
+	if rd := c.Query("range_days"); rd != "" {
+		if val, err := strconv.Atoi(rd); err == nil && val > 0 {
+			rangeDays = val
+		}
+	}
+
+	items, err := h.productService.GetTopProducts(c.Request.Context(), limit, rangeDays)
+	if err != nil {
+		utils.GinInternalErrorResponse(c, "Failed to get top products", err)
+		return
+	}
+
+	response := models.TopProductsResponse{
+		RangeDays: rangeDays,
+		Items:     items,
+	}
+
+	utils.GinSuccessResponse(c, "Top products retrieved", response)
+}

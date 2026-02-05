@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"ecommerce-backend/internal/models"
@@ -16,7 +17,9 @@ type UserRepository interface {
 	Create(ctx context.Context, user *models.User) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.User, error)
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
+	GetAll(ctx context.Context, page, limit, rangeDays int) ([]models.User, int, error)
 	Update(ctx context.Context, user *models.User) error
+	UpdateRole(ctx context.Context, id uuid.UUID, role string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -30,8 +33,8 @@ func NewUserRepository(db *pgxpool.Pool) UserRepository {
 
 func (r *userRepository) Create(ctx context.Context, user *models.User) error {
 	query := `
-        INSERT INTO users (email, password_hash, first_name, last_name, role)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO users (email, password_hash, first_name, last_name, role, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
         RETURNING id, created_at, updated_at
     `
 
@@ -127,6 +130,72 @@ func (r *userRepository) Update(ctx context.Context, user *models.User) error {
 	)
 
 	return err
+}
+
+func (r *userRepository) UpdateRole(ctx context.Context, id uuid.UUID, role string) error {
+	query := `
+        UPDATE users
+        SET role = $1, updated_at = NOW()
+        WHERE id = $2
+    `
+
+	_, err := r.db.Exec(ctx, query, role, id)
+	return err
+}
+
+func (r *userRepository) GetAll(ctx context.Context, page, limit, rangeDays int) ([]models.User, int, error) {
+	offset := (page - 1) * limit
+
+	whereClause := "WHERE 1=1"
+	args := []interface{}{}
+	argCount := 1
+
+	if rangeDays > 0 {
+		whereClause += " AND created_at >= NOW() - ($" + fmt.Sprintf("%d", argCount) + " || ' days')::interval"
+		args = append(args, rangeDays)
+		argCount++
+	}
+
+	countQuery := "SELECT COUNT(*) FROM users " + whereClause
+	var total int
+	err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	query := `
+        SELECT id, email, password_hash, first_name, last_name, role, created_at, updated_at
+        FROM users
+    ` + whereClause + ` ORDER BY created_at DESC LIMIT $` + fmt.Sprintf("%d", argCount) + ` OFFSET $` + fmt.Sprintf("%d", argCount+1)
+
+	args = append(args, limit, offset)
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var user models.User
+		err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.PasswordHash,
+			&user.FirstName,
+			&user.LastName,
+			&user.Role,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+		users = append(users, user)
+	}
+
+	return users, total, nil
 }
 
 func (r *userRepository) Delete(ctx context.Context, id uuid.UUID) error {

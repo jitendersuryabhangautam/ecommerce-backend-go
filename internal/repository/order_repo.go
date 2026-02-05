@@ -16,9 +16,12 @@ type OrderRepository interface {
 	Create(ctx context.Context, order *models.Order) error
 	CreateWithTx(ctx context.Context, tx pgx.Tx, order *models.Order) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Order, error)
+	GetAdminByID(ctx context.Context, id uuid.UUID) (*models.AdminOrder, error)
 	GetByOrderNumber(ctx context.Context, orderNumber string) (*models.Order, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID, page, limit int) ([]models.Order, int, error)
-	GetAll(ctx context.Context, page, limit int, status string) ([]models.Order, int, error)
+	GetAll(ctx context.Context, page, limit int, status string, rangeDays int) ([]models.AdminOrder, int, error)
+	GetRecent(ctx context.Context, limit, rangeDays int) ([]models.AdminOrder, error)
+	GetAnalytics(ctx context.Context, rangeDays int) (*models.AdminAnalytics, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status models.OrderStatus) error
 	CancelOrder(ctx context.Context, id uuid.UUID) error
 	BeginTx(ctx context.Context) (pgx.Tx, error)
@@ -183,6 +186,63 @@ func (r *orderRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Or
 	return &order, nil
 }
 
+func (r *orderRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*models.AdminOrder, error) {
+	query := `
+        SELECT 
+            o.id, o.user_id, o.order_number, o.total_amount, o.status, o.payment_method,
+            o.created_at, o.updated_at,
+            u.id, u.email
+        FROM orders o
+        JOIN users u ON o.user_id = u.id
+        WHERE o.id = $1
+    `
+
+	var order models.AdminOrder
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&order.ID,
+		&order.UserID,
+		&order.OrderNumber,
+		&order.TotalAmount,
+		&order.Status,
+		&order.PaymentMethod,
+		&order.CreatedAt,
+		&order.UpdatedAt,
+		&order.User.ID,
+		&order.User.Email,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	itemsQuery := `
+        SELECT order_id, product_id, quantity
+        FROM order_items
+        WHERE order_id = $1
+        ORDER BY created_at
+    `
+
+	rows, err := r.db.Query(ctx, itemsQuery, order.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item models.AdminOrderItem
+		var orderID uuid.UUID
+		if err := rows.Scan(&orderID, &item.ProductID, &item.Quantity); err != nil {
+			return nil, err
+		}
+		order.Items = append(order.Items, item)
+	}
+
+	return &order, nil
+}
+
 func (r *orderRepository) GetByOrderNumber(ctx context.Context, orderNumber string) (*models.Order, error) {
 	orderQuery := `
         SELECT id, user_id, order_number, total_amount, status, payment_method,
@@ -233,7 +293,7 @@ func (r *orderRepository) GetByUserID(ctx context.Context, userID uuid.UUID, pag
                shipping_address, billing_address, created_at, updated_at
         FROM orders
         WHERE user_id = $1
-        ORDER BY created_at DESC
+        ORDER BY o.created_at DESC
         LIMIT $2 OFFSET $3
     `
 
@@ -269,7 +329,7 @@ func (r *orderRepository) GetByUserID(ctx context.Context, userID uuid.UUID, pag
 	return orders, total, nil
 }
 
-func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status string) ([]models.Order, int, error) {
+func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status string, rangeDays int) ([]models.AdminOrder, int, error) {
 	offset := (page - 1) * limit
 
 	// Build WHERE clause
@@ -278,13 +338,18 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 	argCount := 1
 
 	if status != "" {
-		whereClause += fmt.Sprintf(" AND status = $%d", argCount)
+		whereClause += fmt.Sprintf(" AND o.status = $%d", argCount)
 		args = append(args, status)
+		argCount++
+	}
+	if rangeDays > 0 {
+		whereClause += fmt.Sprintf(" AND o.created_at >= NOW() - ($%d || ' days')::interval", argCount)
+		args = append(args, rangeDays)
 		argCount++
 	}
 
 	// Count total orders
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM orders %s", whereClause)
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM orders o %s", whereClause)
 	var total int
 	err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
@@ -293,9 +358,12 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 
 	// Get orders with pagination
 	ordersQuery := fmt.Sprintf(`
-        SELECT id, user_id, order_number, total_amount, status, payment_method,
-               shipping_address, billing_address, created_at, updated_at
-        FROM orders %s
+        SELECT 
+            o.id, o.user_id, o.order_number, o.total_amount, o.status, o.payment_method,
+            o.created_at, o.updated_at, u.id, u.email
+        FROM orders o
+        JOIN users u ON o.user_id = u.id
+        %s
         ORDER BY created_at DESC
         LIMIT $%d OFFSET $%d
     `, whereClause, argCount, argCount+1)
@@ -308,9 +376,9 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 	}
 	defer rows.Close()
 
-	var orders []models.Order
+	var orders []models.AdminOrder
 	for rows.Next() {
-		var order models.Order
+		var order models.AdminOrder
 		err := rows.Scan(
 			&order.ID,
 			&order.UserID,
@@ -318,10 +386,10 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 			&order.TotalAmount,
 			&order.Status,
 			&order.PaymentMethod,
-			&order.ShippingAddress,
-			&order.BillingAddress,
 			&order.CreatedAt,
 			&order.UpdatedAt,
+			&order.User.ID,
+			&order.User.Email,
 		)
 
 		if err != nil {
@@ -331,7 +399,222 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 		orders = append(orders, order)
 	}
 
+	if len(orders) == 0 {
+		return orders, total, nil
+	}
+
+	orderIDs := make([]uuid.UUID, 0, len(orders))
+	for _, o := range orders {
+		orderIDs = append(orderIDs, o.ID)
+	}
+
+	itemsQuery := `
+        SELECT order_id, product_id, quantity
+        FROM order_items
+        WHERE order_id = ANY($1)
+        ORDER BY created_at
+    `
+
+	itemRows, err := r.db.Query(ctx, itemsQuery, orderIDs)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer itemRows.Close()
+
+	orderIndex := make(map[uuid.UUID]*models.AdminOrder, len(orders))
+	for i := range orders {
+		orderIndex[orders[i].ID] = &orders[i]
+	}
+
+	for itemRows.Next() {
+		var orderID uuid.UUID
+		var item models.AdminOrderItem
+		if err := itemRows.Scan(&orderID, &item.ProductID, &item.Quantity); err != nil {
+			return nil, 0, err
+		}
+		if orderPtr, ok := orderIndex[orderID]; ok {
+			orderPtr.Items = append(orderPtr.Items, item)
+		}
+	}
+
 	return orders, total, nil
+}
+
+func (r *orderRepository) GetRecent(ctx context.Context, limit, rangeDays int) ([]models.AdminOrder, error) {
+	whereClause := "WHERE 1=1"
+	args := []interface{}{}
+	argCount := 1
+
+	if rangeDays > 0 {
+		whereClause += fmt.Sprintf(" AND o.created_at >= NOW() - ($%d || ' days')::interval", argCount)
+		args = append(args, rangeDays)
+		argCount++
+	}
+
+	query := fmt.Sprintf(`
+        SELECT 
+            o.id, o.user_id, o.order_number, o.total_amount, o.status, o.payment_method,
+            o.created_at, o.updated_at, u.id, u.email
+        FROM orders o
+        JOIN users u ON o.user_id = u.id
+        %s
+        ORDER BY o.created_at DESC
+        LIMIT $%d
+    `, whereClause, argCount)
+
+	args = append(args, limit)
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []models.AdminOrder
+	for rows.Next() {
+		var order models.AdminOrder
+		if err := rows.Scan(
+			&order.ID,
+			&order.UserID,
+			&order.OrderNumber,
+			&order.TotalAmount,
+			&order.Status,
+			&order.PaymentMethod,
+			&order.CreatedAt,
+			&order.UpdatedAt,
+			&order.User.ID,
+			&order.User.Email,
+		); err != nil {
+			return nil, err
+		}
+		orders = append(orders, order)
+	}
+
+	if len(orders) == 0 {
+		return orders, nil
+	}
+
+	orderIDs := make([]uuid.UUID, 0, len(orders))
+	for _, o := range orders {
+		orderIDs = append(orderIDs, o.ID)
+	}
+
+	itemsQuery := `
+        SELECT order_id, product_id, quantity
+        FROM order_items
+        WHERE order_id = ANY($1)
+        ORDER BY created_at
+    `
+
+	itemRows, err := r.db.Query(ctx, itemsQuery, orderIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer itemRows.Close()
+
+	orderIndex := make(map[uuid.UUID]*models.AdminOrder, len(orders))
+	for i := range orders {
+		orderIndex[orders[i].ID] = &orders[i]
+	}
+
+	for itemRows.Next() {
+		var orderID uuid.UUID
+		var item models.AdminOrderItem
+		if err := itemRows.Scan(&orderID, &item.ProductID, &item.Quantity); err != nil {
+			return nil, err
+		}
+		if orderPtr, ok := orderIndex[orderID]; ok {
+			orderPtr.Items = append(orderPtr.Items, item)
+		}
+	}
+
+	return orders, nil
+}
+
+func (r *orderRepository) GetAnalytics(ctx context.Context, rangeDays int) (*models.AdminAnalytics, error) {
+	analytics := &models.AdminAnalytics{
+		RangeDays: rangeDays,
+	}
+
+	orderWhere := "WHERE 1=1"
+	orderArgs := []interface{}{}
+	orderArgCount := 1
+	if rangeDays > 0 {
+		orderWhere += fmt.Sprintf(" AND created_at >= NOW() - ($%d || ' days')::interval", orderArgCount)
+		orderArgs = append(orderArgs, rangeDays)
+		orderArgCount++
+	}
+
+	var totalRevenue float64
+	var totalOrders int
+	totalQuery := "SELECT COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders " + orderWhere
+	if err := r.db.QueryRow(ctx, totalQuery, orderArgs...).Scan(&totalRevenue, &totalOrders); err != nil {
+		return nil, err
+	}
+
+	productWhere := "WHERE 1=1"
+	productArgs := []interface{}{}
+	productArgCount := 1
+	if rangeDays > 0 {
+		productWhere += fmt.Sprintf(" AND created_at >= NOW() - ($%d || ' days')::interval", productArgCount)
+		productArgs = append(productArgs, rangeDays)
+		productArgCount++
+	}
+
+	var totalProducts int
+	if err := r.db.QueryRow(ctx, "SELECT COUNT(*) FROM products "+productWhere, productArgs...).Scan(&totalProducts); err != nil {
+		return nil, err
+	}
+
+	userWhere := "WHERE role = 'customer'"
+	userArgs := []interface{}{}
+	userArgCount := 1
+	if rangeDays > 0 {
+		userWhere += fmt.Sprintf(" AND created_at >= NOW() - ($%d || ' days')::interval", userArgCount)
+		userArgs = append(userArgs, rangeDays)
+		userArgCount++
+	}
+
+	var totalCustomers int
+	if err := r.db.QueryRow(ctx, "SELECT COUNT(*) FROM users "+userWhere, userArgs...).Scan(&totalCustomers); err != nil {
+		return nil, err
+	}
+
+	var ordersByStatus []models.AdminStatusCount
+	statusQuery := "SELECT status, COUNT(*) FROM orders " + orderWhere + " GROUP BY status"
+	rows, err := r.db.Query(ctx, statusQuery, orderArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var status models.OrderStatus
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, err
+		}
+		ordersByStatus = append(ordersByStatus, models.AdminStatusCount{
+			Status: status,
+			Count:  count,
+		})
+	}
+
+	avgOrderValue := 0.0
+	if totalOrders > 0 {
+		avgOrderValue = totalRevenue / float64(totalOrders)
+	}
+
+	analytics.Totals = models.AdminTotals{
+		TotalRevenue:   totalRevenue,
+		TotalOrders:    totalOrders,
+		TotalProducts:  totalProducts,
+		TotalCustomers: totalCustomers,
+		AvgOrderValue:  avgOrderValue,
+	}
+	analytics.OrdersByStatus = ordersByStatus
+
+	return analytics, nil
 }
 
 func (r *orderRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status models.OrderStatus) error {

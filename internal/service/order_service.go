@@ -16,7 +16,10 @@ type OrderService interface {
 	CreateOrder(ctx context.Context, userID uuid.UUID, req models.CreateOrderRequest) (*models.Order, error)
 	GetOrder(ctx context.Context, orderID, userID uuid.UUID) (*models.Order, error)
 	GetUserOrders(ctx context.Context, userID uuid.UUID, page, limit int) ([]models.Order, int, error)
-	GetAllOrders(ctx context.Context, page, limit int, status string) ([]models.Order, int, error)
+	GetAllOrders(ctx context.Context, page, limit int, status string, rangeDays int) ([]models.AdminOrder, int, error)
+	GetOrderAdmin(ctx context.Context, orderID uuid.UUID) (*models.AdminOrder, error)
+	GetRecentOrders(ctx context.Context, limit, rangeDays int) ([]models.AdminOrder, error)
+	GetAnalytics(ctx context.Context, rangeDays int) (*models.AdminAnalytics, error)
 	UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, status models.OrderStatus) error
 	CancelOrder(ctx context.Context, orderID, userID uuid.UUID) error
 	ProcessOrderReturn(ctx context.Context, orderID uuid.UUID, returnID uuid.UUID) error
@@ -182,7 +185,7 @@ func (s *orderService) GetUserOrders(ctx context.Context, userID uuid.UUID, page
 	return s.orderRepo.GetByUserID(ctx, userID, page, limit)
 }
 
-func (s *orderService) GetAllOrders(ctx context.Context, page, limit int, status string) ([]models.Order, int, error) {
+func (s *orderService) GetAllOrders(ctx context.Context, page, limit int, status string, rangeDays int) ([]models.AdminOrder, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -191,7 +194,29 @@ func (s *orderService) GetAllOrders(ctx context.Context, page, limit int, status
 		limit = 10
 	}
 
-	return s.orderRepo.GetAll(ctx, page, limit, status)
+	return s.orderRepo.GetAll(ctx, page, limit, status, rangeDays)
+}
+
+func (s *orderService) GetOrderAdmin(ctx context.Context, orderID uuid.UUID) (*models.AdminOrder, error) {
+	order, err := s.orderRepo.GetAdminByID(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order == nil {
+		return nil, errors.New("order not found")
+	}
+	return order, nil
+}
+
+func (s *orderService) GetRecentOrders(ctx context.Context, limit, rangeDays int) ([]models.AdminOrder, error) {
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+	return s.orderRepo.GetRecent(ctx, limit, rangeDays)
+}
+
+func (s *orderService) GetAnalytics(ctx context.Context, rangeDays int) (*models.AdminAnalytics, error) {
+	return s.orderRepo.GetAnalytics(ctx, rangeDays)
 }
 
 func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, status models.OrderStatus) error {

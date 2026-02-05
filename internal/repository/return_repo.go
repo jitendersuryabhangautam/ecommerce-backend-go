@@ -14,7 +14,7 @@ type ReturnRepository interface {
 	Create(ctx context.Context, returnReq *models.Return) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Return, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID, page, limit int) ([]models.Return, int, error)
-	GetAll(ctx context.Context, page, limit int, status string) ([]models.Return, int, error)
+	GetAll(ctx context.Context, page, limit int, status string, rangeDays int) ([]models.AdminReturn, int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status models.ReturnStatus, refundAmount float64) error
 	GetByOrderID(ctx context.Context, orderID uuid.UUID) ([]models.Return, error)
 }
@@ -120,7 +120,7 @@ func (r *returnRepository) GetByUserID(ctx context.Context, userID uuid.UUID, pa
 	return returns, total, nil
 }
 
-func (r *returnRepository) GetAll(ctx context.Context, page, limit int, status string) ([]models.Return, int, error) {
+func (r *returnRepository) GetAll(ctx context.Context, page, limit int, status string, rangeDays int) ([]models.AdminReturn, int, error) {
 	offset := (page - 1) * limit
 
 	// Build WHERE clause
@@ -129,13 +129,18 @@ func (r *returnRepository) GetAll(ctx context.Context, page, limit int, status s
 	argCount := 1
 
 	if status != "" {
-		whereClause += " AND status = $1"
+		whereClause += " AND r.status = $1"
 		args = append(args, status)
+		argCount++
+	}
+	if rangeDays > 0 {
+		whereClause += " AND r.created_at >= NOW() - ($" + fmt.Sprintf("%d", argCount) + " || ' days')::interval"
+		args = append(args, rangeDays)
 		argCount++
 	}
 
 	// Count total returns
-	countQuery := "SELECT COUNT(*) FROM returns " + whereClause
+	countQuery := "SELECT COUNT(*) FROM returns r " + whereClause
 	var total int
 	err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
@@ -144,9 +149,13 @@ func (r *returnRepository) GetAll(ctx context.Context, page, limit int, status s
 
 	// Get returns with pagination
 	returnsQuery := `
-        SELECT id, order_id, user_id, reason, status, refund_amount, created_at, updated_at
-        FROM returns
-    ` + whereClause + ` ORDER BY created_at DESC LIMIT $` + fmt.Sprintf("%d", argCount) + ` OFFSET $` + fmt.Sprintf("%d", argCount+1)
+        SELECT 
+            r.id, r.order_id, r.user_id, r.reason, r.status, r.refund_amount, r.created_at, r.updated_at,
+            o.order_number, u.id, u.email
+        FROM returns r
+        JOIN orders o ON r.order_id = o.id
+        JOIN users u ON r.user_id = u.id
+    ` + whereClause + ` ORDER BY r.created_at DESC LIMIT $` + fmt.Sprintf("%d", argCount) + ` OFFSET $` + fmt.Sprintf("%d", argCount+1)
 
 	args = append(args, limit, offset)
 
@@ -156,18 +165,20 @@ func (r *returnRepository) GetAll(ctx context.Context, page, limit int, status s
 	}
 	defer rows.Close()
 
-	var returns []models.Return
+	var returns []models.AdminReturn
 	for rows.Next() {
-		var returnReq models.Return
+		var returnReq models.AdminReturn
 		err := rows.Scan(
 			&returnReq.ID,
 			&returnReq.OrderID,
-			&returnReq.UserID,
 			&returnReq.Reason,
 			&returnReq.Status,
 			&returnReq.RefundAmount,
 			&returnReq.CreatedAt,
 			&returnReq.UpdatedAt,
+			&returnReq.Order.OrderNumber,
+			&returnReq.User.ID,
+			&returnReq.User.Email,
 		)
 
 		if err != nil {

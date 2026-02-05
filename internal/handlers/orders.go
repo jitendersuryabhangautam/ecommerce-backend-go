@@ -159,7 +159,46 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 }
 
 func (h *OrderHandler) GetAllOrders(c *gin.Context) {
-	utils.GinSuccessResponse(c, "All orders retrieved", []interface{}{})
+	page := 1
+	if p := c.Query("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+
+	limit := 10
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	status := c.Query("status")
+
+	rangeDays := 30
+	if rd := c.Query("range_days"); rd != "" {
+		if parsed, err := strconv.Atoi(rd); err == nil && parsed > 0 {
+			rangeDays = parsed
+		}
+	}
+
+	orders, total, err := h.orderService.GetAllOrders(c.Request.Context(), page, limit, status, rangeDays)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Failed to retrieve orders", err)
+		return
+	}
+
+	response := map[string]interface{}{
+		"orders": orders,
+		"meta": map[string]interface{}{
+			"page":       page,
+			"limit":      limit,
+			"total":      total,
+			"totalPages": (total + limit - 1) / limit,
+		},
+	}
+
+	utils.GinSuccessResponse(c, "All orders retrieved", response)
 }
 
 func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
@@ -188,4 +227,67 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 	}
 
 	utils.GinSuccessResponse(c, "Order status updated", nil)
+}
+
+func (h *OrderHandler) GetAdminOrder(c *gin.Context) {
+	orderID := c.Param("id")
+	orderUUID, err := uuid.Parse(orderID)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Invalid order ID", err)
+		return
+	}
+
+	order, err := h.orderService.GetOrderAdmin(c.Request.Context(), orderUUID)
+	if err != nil {
+		utils.GinNotFoundResponse(c, "Order")
+		return
+	}
+
+	utils.GinSuccessResponse(c, "Order retrieved successfully", order)
+}
+
+func (h *OrderHandler) GetRecentOrders(c *gin.Context) {
+	limit := 10
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	rangeDays := 30
+	if rd := c.Query("range_days"); rd != "" {
+		if parsed, err := strconv.Atoi(rd); err == nil && parsed > 0 {
+			rangeDays = parsed
+		}
+	}
+
+	orders, err := h.orderService.GetRecentOrders(c.Request.Context(), limit, rangeDays)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Failed to retrieve recent orders", err)
+		return
+	}
+
+	response := models.RecentOrdersResponse{
+		Limit:  limit,
+		Orders: orders,
+	}
+
+	utils.GinSuccessResponse(c, "Recent orders retrieved", response)
+}
+
+func (h *OrderHandler) GetAnalytics(c *gin.Context) {
+	rangeDays := 0
+	if rd := c.Query("range_days"); rd != "" {
+		if parsed, err := strconv.Atoi(rd); err == nil && parsed > 0 {
+			rangeDays = parsed
+		}
+	}
+
+	analytics, err := h.orderService.GetAnalytics(c.Request.Context(), rangeDays)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Failed to retrieve analytics", err)
+		return
+	}
+
+	utils.GinSuccessResponse(c, "Analytics retrieved", analytics)
 }

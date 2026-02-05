@@ -16,7 +16,7 @@ type ReturnService interface {
 	CreateReturn(ctx context.Context, req models.CreateReturnRequest, userID uuid.UUID) (*models.Return, error)
 	GetReturn(ctx context.Context, returnID uuid.UUID, userID uuid.UUID) (*models.Return, error)
 	GetUserReturns(ctx context.Context, userID uuid.UUID, page, limit int) ([]models.Return, int, error)
-	GetAllReturns(ctx context.Context, page, limit int, status string) ([]models.Return, int, error)
+	GetAllReturns(ctx context.Context, page, limit int, status string, rangeDays int) ([]models.AdminReturn, int, error)
 	ProcessReturn(ctx context.Context, returnID uuid.UUID, req models.ProcessReturnRequest) (*models.Return, error)
 }
 
@@ -135,7 +135,7 @@ func (s *returnService) GetUserReturns(ctx context.Context, userID uuid.UUID, pa
 	return s.returnRepo.GetByUserID(ctx, userID, page, limit)
 }
 
-func (s *returnService) GetAllReturns(ctx context.Context, page, limit int, status string) ([]models.Return, int, error) {
+func (s *returnService) GetAllReturns(ctx context.Context, page, limit int, status string, rangeDays int) ([]models.AdminReturn, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -144,7 +144,7 @@ func (s *returnService) GetAllReturns(ctx context.Context, page, limit int, stat
 		limit = 10
 	}
 
-	return s.returnRepo.GetAll(ctx, page, limit, status)
+	return s.returnRepo.GetAll(ctx, page, limit, status, rangeDays)
 }
 
 func (s *returnService) ProcessReturn(ctx context.Context, returnID uuid.UUID, req models.ProcessReturnRequest) (*models.Return, error) {

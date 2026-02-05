@@ -145,7 +145,14 @@ func (h *ReturnHandler) GetAllReturns(c *gin.Context) {
 
 	status := c.Query("status")
 
-	returns, total, err := h.returnService.GetAllReturns(c.Request.Context(), page, limit, status)
+	rangeDays := 0
+	if rd := c.Query("range_days"); rd != "" {
+		if parsed, err := strconv.Atoi(rd); err == nil && parsed > 0 {
+			rangeDays = parsed
+		}
+	}
+
+	returns, total, err := h.returnService.GetAllReturns(c.Request.Context(), page, limit, status, rangeDays)
 	if err != nil {
 		utils.GinBadRequestResponse(c, "Failed to retrieve returns", err)
 		return

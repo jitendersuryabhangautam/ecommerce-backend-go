@@ -43,19 +43,26 @@ func main() {
 	// Initialize repositories, services, and handlers
 	repos := handlers.InitRepositories(db, cfg)
 
-	// Health check endpoints (public)
+	// Health check endpoints (public, legacy)
 	router.GET("/health", repos.HealthHandler.HealthCheck)
 	router.GET("/ready", repos.HealthHandler.ReadinessCheck)
 	router.GET("/metrics", repos.HealthHandler.Metrics)
 
 	// API version prefix
 	api := router.Group("/api/v1")
+	{
+		// Health check endpoints (public)
+		api.GET("/health", repos.HealthHandler.HealthCheck)
+		api.GET("/ready", repos.HealthHandler.ReadinessCheck)
+		api.GET("/metrics", repos.HealthHandler.Metrics)
+	}
 
 	// Public routes
 	{
 		// Auth routes
 		api.POST("/auth/register", repos.AuthHandler.Register)
 		api.POST("/auth/login", repos.AuthHandler.Login)
+		api.POST("/auth/refresh", repos.AuthHandler.RefreshToken)
 
 		// Product routes (public read access)
 		api.GET("/products", repos.ProductHandler.GetProducts)
@@ -103,12 +110,17 @@ func main() {
 	{
 		// Product management
 		admin.POST("/products", repos.ProductHandler.CreateProduct)
+		admin.GET("/products", repos.ProductHandler.GetAdminProducts)
 		admin.PUT("/products/:id", repos.ProductHandler.UpdateProduct)
 		admin.DELETE("/products/:id", repos.ProductHandler.DeleteProduct)
+		admin.GET("/products/top", repos.ProductHandler.GetTopProducts)
 
 		// Order management
 		admin.GET("/orders", repos.OrderHandler.GetAllOrders)
+		admin.GET("/orders/recent", repos.OrderHandler.GetRecentOrders)
+		admin.GET("/orders/:id", repos.OrderHandler.GetAdminOrder)
 		admin.PUT("/orders/:id/status", repos.OrderHandler.UpdateOrderStatus)
+		admin.GET("/analytics", repos.OrderHandler.GetAnalytics)
 
 		// User management
 		admin.GET("/users", repos.AuthHandler.GetAllUsers)

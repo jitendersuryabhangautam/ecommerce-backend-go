@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"ecommerce-backend/internal/middleware"
 	"ecommerce-backend/internal/models"
@@ -80,6 +81,40 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	utils.GinSuccessResponse(c, "Login successful", response)
+}
+
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+	var req models.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.GinBadRequestResponse(c, "Invalid request body", err)
+		return
+	}
+
+	if errors := utils.ValidateStruct(req); errors != nil {
+		utils.GinValidationErrorResponse(c, errors)
+		return
+	}
+
+	user, err := h.AuthService.ValidateToken(req.RefreshToken)
+	if err != nil {
+		utils.GinUnauthorizedResponse(c, "Invalid refresh token")
+		return
+	}
+
+	// Load full user to ensure current role/email
+	fullUser, err := h.AuthService.GetProfile(c.Request.Context(), user.ID)
+	if err != nil {
+		utils.GinUnauthorizedResponse(c, "Invalid refresh token")
+		return
+	}
+
+	token, err := h.AuthService.GenerateToken(fullUser)
+	if err != nil {
+		utils.GinInternalErrorResponse(c, "Failed to generate token", err)
+		return
+	}
+
+	utils.GinSuccessResponse(c, "Token refreshed", gin.H{"access_token": token})
 }
 
 func (h *AuthHandler) GetProfile(c *gin.Context) {
@@ -193,9 +228,70 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 // Stub methods for admin endpoints
 func (h *AuthHandler) GetAllUsers(c *gin.Context) {
-	utils.GinSuccessResponse(c, "Users retrieved", []interface{}{})
+	page := 1
+	if p := c.Query("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+
+	limit := 10
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	rangeDays := 0
+	if rd := c.Query("range_days"); rd != "" {
+		if parsed, err := strconv.Atoi(rd); err == nil && parsed > 0 {
+			rangeDays = parsed
+		}
+	}
+
+	users, total, err := h.AuthService.ListUsers(c.Request.Context(), page, limit, rangeDays)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Failed to retrieve users", err)
+		return
+	}
+
+	response := map[string]interface{}{
+		"users": users,
+		"meta": map[string]interface{}{
+			"page":       page,
+			"limit":      limit,
+			"total":      total,
+			"totalPages": (total + limit - 1) / limit,
+		},
+	}
+
+	utils.GinSuccessResponse(c, "Users retrieved", response)
 }
 
 func (h *AuthHandler) UpdateUserRole(c *gin.Context) {
-	utils.GinSuccessResponse(c, "User role updated", nil)
+	userID := c.Param("id")
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Invalid user ID", err)
+		return
+	}
+
+	var req models.UpdateUserRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.GinBadRequestResponse(c, "Invalid request body", err)
+		return
+	}
+
+	if errors := utils.ValidateStruct(req); errors != nil {
+		utils.GinValidationErrorResponse(c, errors)
+		return
+	}
+
+	updatedUser, err := h.AuthService.UpdateUserRole(c.Request.Context(), userUUID, req.Role)
+	if err != nil {
+		utils.GinBadRequestResponse(c, "Failed to update user role", err)
+		return
+	}
+
+	utils.GinSuccessResponse(c, "User role updated", updatedUser)
 }

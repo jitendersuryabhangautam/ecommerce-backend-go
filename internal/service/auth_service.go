@@ -19,6 +19,8 @@ type AuthService interface {
 	GetProfile(ctx context.Context, userID uuid.UUID) (*models.User, error)
 	GenerateToken(user *models.User) (string, error)
 	ValidateToken(tokenString string) (*models.User, error)
+	ListUsers(ctx context.Context, page, limit, rangeDays int) ([]models.User, int, error)
+	UpdateUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.User, error)
 }
 
 type authService struct {
@@ -178,4 +180,47 @@ func (s *authService) ValidateToken(tokenString string) (*models.User, error) {
 	}
 
 	return nil, errors.New("invalid token")
+}
+
+func (s *authService) ListUsers(ctx context.Context, page, limit, rangeDays int) ([]models.User, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+
+	users, total, err := s.userRepo.GetAll(ctx, page, limit, rangeDays)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	for i := range users {
+		users[i].PasswordHash = ""
+	}
+
+	return users, total, nil
+}
+
+func (s *authService) UpdateUserRole(ctx context.Context, userID uuid.UUID, role string) (*models.User, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+
+	if err := s.userRepo.UpdateRole(ctx, userID, role); err != nil {
+		return nil, err
+	}
+
+	updated, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if updated != nil {
+		updated.PasswordHash = ""
+	}
+	return updated, nil
 }

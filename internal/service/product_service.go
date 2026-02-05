@@ -15,6 +15,8 @@ type ProductService interface {
 	CreateProduct(ctx context.Context, req models.ProductRequest) (*models.Product, error)
 	GetProduct(ctx context.Context, id uuid.UUID) (*models.Product, error)
 	GetProducts(ctx context.Context, page, limit int, category, search string) ([]models.Product, int, error)
+	GetAdminProducts(ctx context.Context, page, limit, rangeDays int) ([]models.Product, int, error)
+	GetTopProducts(ctx context.Context, limit, rangeDays int) ([]models.TopProductItem, error)
 	UpdateProduct(ctx context.Context, id uuid.UUID, req models.ProductUpdateRequest) (*models.Product, error)
 	DeleteProduct(ctx context.Context, id uuid.UUID) error
 	CheckStock(ctx context.Context, productID uuid.UUID, quantity int) (bool, error)
@@ -83,6 +85,25 @@ func (s *productService) GetProducts(ctx context.Context, page, limit int, categ
 	}
 
 	return s.productRepo.GetAll(ctx, page, limit, category, search)
+}
+
+func (s *productService) GetAdminProducts(ctx context.Context, page, limit, rangeDays int) ([]models.Product, int, error) {
+	if page < 1 {
+		page = 1
+	}
+
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+
+	return s.productRepo.GetAllAdmin(ctx, page, limit, rangeDays)
+}
+
+func (s *productService) GetTopProducts(ctx context.Context, limit, rangeDays int) ([]models.TopProductItem, error) {
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+	return s.productRepo.GetTopProducts(ctx, limit, rangeDays)
 }
 
 func (s *productService) UpdateProduct(ctx context.Context, id uuid.UUID, req models.ProductUpdateRequest) (*models.Product, error) {

@@ -18,6 +18,8 @@ type ProductRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Product, error)
 	GetBySKU(ctx context.Context, sku string) (*models.Product, error)
 	GetAll(ctx context.Context, page, limit int, category, search string) ([]models.Product, int, error)
+	GetAllAdmin(ctx context.Context, page, limit, rangeDays int) ([]models.Product, int, error)
+	GetTopProducts(ctx context.Context, limit, rangeDays int) ([]models.TopProductItem, error)
 	Update(ctx context.Context, id uuid.UUID, updateData *models.ProductUpdateRequest) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	UpdateStock(ctx context.Context, id uuid.UUID, quantity int) error
@@ -178,6 +180,127 @@ func (r *productRepository) GetAll(ctx context.Context, page, limit int, categor
 	}
 
 	return products, total, nil
+}
+
+func (r *productRepository) GetAllAdmin(ctx context.Context, page, limit, rangeDays int) ([]models.Product, int, error) {
+	offset := (page - 1) * limit
+
+	whereClause := "WHERE 1=1"
+	args := []interface{}{}
+	argCount := 1
+
+	if rangeDays > 0 {
+		whereClause += fmt.Sprintf(" AND created_at >= NOW() - ($%d || ' days')::interval", argCount)
+		args = append(args, rangeDays)
+		argCount++
+	}
+
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM products %s", whereClause)
+	var total int
+	err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	query := fmt.Sprintf(`
+        SELECT id, sku, name, description, price, stock_quantity, category, image_url,
+               created_at, updated_at
+        FROM products %s
+        ORDER BY created_at DESC
+        LIMIT $%d OFFSET $%d
+    `, whereClause, argCount, argCount+1)
+
+	args = append(args, limit, offset)
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		var product models.Product
+		err := rows.Scan(
+			&product.ID,
+			&product.SKU,
+			&product.Name,
+			&product.Description,
+			&product.Price,
+			&product.Stock,
+			&product.Category,
+			&product.ImageURL,
+			&product.CreatedAt,
+			&product.UpdatedAt,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+		products = append(products, product)
+	}
+
+	return products, total, nil
+}
+
+func (r *productRepository) GetTopProducts(ctx context.Context, limit, rangeDays int) ([]models.TopProductItem, error) {
+	whereClause := "WHERE 1=1"
+	args := []interface{}{}
+	argCount := 1
+
+	if rangeDays > 0 {
+		whereClause += fmt.Sprintf(" AND o.created_at >= NOW() - ($%d || ' days')::interval", argCount)
+		args = append(args, rangeDays)
+		argCount++
+	}
+
+	query := fmt.Sprintf(`
+        SELECT 
+            p.id, p.sku, p.name, p.description, p.price, p.stock_quantity, p.category, p.image_url,
+            p.created_at, p.updated_at,
+            COALESCE(SUM(oi.quantity), 0) as total_quantity,
+            COALESCE(SUM(oi.quantity * oi.price_at_time), 0) as total_revenue
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        JOIN products p ON oi.product_id = p.id
+        %s
+        GROUP BY p.id
+        ORDER BY total_quantity DESC, total_revenue DESC
+        LIMIT $%d
+    `, whereClause, argCount)
+
+	args = append(args, limit)
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []models.TopProductItem
+	for rows.Next() {
+		var item models.TopProductItem
+		var product models.Product
+		if err := rows.Scan(
+			&product.ID,
+			&product.SKU,
+			&product.Name,
+			&product.Description,
+			&product.Price,
+			&product.Stock,
+			&product.Category,
+			&product.ImageURL,
+			&product.CreatedAt,
+			&product.UpdatedAt,
+			&item.TotalQuantity,
+			&item.TotalRevenue,
+		); err != nil {
+			return nil, err
+		}
+		item.Product = product
+		items = append(items, item)
+	}
+
+	return items, nil
 }
 
 func (r *productRepository) Update(ctx context.Context, id uuid.UUID, updateData *models.ProductUpdateRequest) error {
