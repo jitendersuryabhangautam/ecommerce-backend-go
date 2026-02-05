@@ -268,8 +268,8 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID,
 func isValidStatusTransition(from, to models.OrderStatus) bool {
 	transitions := map[models.OrderStatus][]models.OrderStatus{
 		models.OrderPending:    {models.OrderProcessing, models.OrderCancelled},
-		models.OrderProcessing: {models.OrderShipped, models.OrderCancelled},
-		models.OrderShipped:    {models.OrderDelivered},
+		models.OrderProcessing: {models.OrderShipped, models.OrderDelivered, models.OrderCompleted, models.OrderCancelled},
+		models.OrderShipped:    {models.OrderDelivered, models.OrderCompleted},
 		models.OrderDelivered:  {models.OrderCompleted},
 		models.OrderCompleted:  {},
 		models.OrderCancelled:  {},
