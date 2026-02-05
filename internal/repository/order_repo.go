@@ -343,7 +343,7 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 		argCount++
 	}
 	if rangeDays > 0 {
-		whereClause += fmt.Sprintf(" AND o.created_at >= NOW() - ($%d || ' days')::interval", argCount)
+		whereClause += fmt.Sprintf(" AND o.created_at >= NOW() - $%d * INTERVAL '1 day'", argCount)
 		args = append(args, rangeDays)
 		argCount++
 	}
@@ -446,7 +446,7 @@ func (r *orderRepository) GetRecent(ctx context.Context, limit, rangeDays int) (
 	argCount := 1
 
 	if rangeDays > 0 {
-		whereClause += fmt.Sprintf(" AND o.created_at >= NOW() - ($%d || ' days')::interval", argCount)
+		whereClause += fmt.Sprintf(" AND o.created_at >= NOW() - $%d * INTERVAL '1 day'", argCount)
 		args = append(args, rangeDays)
 		argCount++
 	}
@@ -540,7 +540,7 @@ func (r *orderRepository) GetAnalytics(ctx context.Context, rangeDays int) (*mod
 	orderArgs := []interface{}{}
 	orderArgCount := 1
 	if rangeDays > 0 {
-		orderWhere += fmt.Sprintf(" AND created_at >= NOW() - ($%d || ' days')::interval", orderArgCount)
+		orderWhere += fmt.Sprintf(" AND created_at >= NOW() - $%d * INTERVAL '1 day'", orderArgCount)
 		orderArgs = append(orderArgs, rangeDays)
 		orderArgCount++
 	}
@@ -556,7 +556,7 @@ func (r *orderRepository) GetAnalytics(ctx context.Context, rangeDays int) (*mod
 	productArgs := []interface{}{}
 	productArgCount := 1
 	if rangeDays > 0 {
-		productWhere += fmt.Sprintf(" AND created_at >= NOW() - ($%d || ' days')::interval", productArgCount)
+		productWhere += fmt.Sprintf(" AND created_at >= NOW() - $%d * INTERVAL '1 day'", productArgCount)
 		productArgs = append(productArgs, rangeDays)
 		productArgCount++
 	}
@@ -570,7 +570,7 @@ func (r *orderRepository) GetAnalytics(ctx context.Context, rangeDays int) (*mod
 	userArgs := []interface{}{}
 	userArgCount := 1
 	if rangeDays > 0 {
-		userWhere += fmt.Sprintf(" AND created_at >= NOW() - ($%d || ' days')::interval", userArgCount)
+		userWhere += fmt.Sprintf(" AND created_at >= NOW() - $%d * INTERVAL '1 day'", userArgCount)
 		userArgs = append(userArgs, rangeDays)
 		userArgCount++
 	}

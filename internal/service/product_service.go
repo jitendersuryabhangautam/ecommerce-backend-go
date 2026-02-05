@@ -20,6 +20,7 @@ type ProductService interface {
 	UpdateProduct(ctx context.Context, id uuid.UUID, req models.ProductUpdateRequest) (*models.Product, error)
 	DeleteProduct(ctx context.Context, id uuid.UUID) error
 	CheckStock(ctx context.Context, productID uuid.UUID, quantity int) (bool, error)
+	CheckStockForCart(ctx context.Context, productID, cartID uuid.UUID, quantity int) (bool, error)
 	ReserveStock(ctx context.Context, productID, cartID uuid.UUID, quantity int) error
 	ReleaseStockReservation(ctx context.Context, productID, cartID uuid.UUID) error
 }
@@ -142,6 +143,15 @@ func (s *productService) DeleteProduct(ctx context.Context, id uuid.UUID) error 
 
 func (s *productService) CheckStock(ctx context.Context, productID uuid.UUID, quantity int) (bool, error) {
 	available, err := s.productRepo.GetAvailableStock(ctx, productID)
+	if err != nil {
+		return false, err
+	}
+
+	return available >= quantity, nil
+}
+
+func (s *productService) CheckStockForCart(ctx context.Context, productID, cartID uuid.UUID, quantity int) (bool, error) {
+	available, err := s.productRepo.GetAvailableStockExcludingCart(ctx, productID, cartID)
 	if err != nil {
 		return false, err
 	}

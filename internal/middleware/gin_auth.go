@@ -56,6 +56,9 @@ func GinAuthMiddleware(authService service.AuthService) gin.HandlerFunc {
 			return
 		}
 
+		// Debug: Log user role
+		fmt.Printf("[AUTH DEBUG] User ID: %s, Role from JWT: %s\n", user.ID.String(), user.Role)
+
 		// Add user info to context
 		c.Set(GinUserIDKey, user.ID.String())
 		c.Set(GinUserRoleKey, user.Role)
@@ -68,6 +71,10 @@ func GinAuthMiddleware(authService service.AuthService) gin.HandlerFunc {
 func GinAdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, exists := c.Get(GinUserRoleKey)
+
+		// Debug logging
+		fmt.Printf("[ADMIN MIDDLEWARE] Role exists: %v, Role value: %v\n", exists, role)
+
 		if !exists {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,

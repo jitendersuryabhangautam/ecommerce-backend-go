@@ -97,8 +97,8 @@ func (s *orderService) CreateOrder(ctx context.Context, userID uuid.UUID, req mo
 		}
 		orderItems = append(orderItems, orderItem)
 
-		// Deduct stock from inventory
-		err = s.productRepo.UpdateStock(ctx, cartItem.ProductID, -cartItem.Quantity)
+		// Deduct stock from inventory (within transaction)
+		err = s.productRepo.UpdateStockWithTx(ctx, tx, cartItem.ProductID, -cartItem.Quantity)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update stock for product %s: %w",
 				cartItem.ProductID, err)
@@ -228,6 +228,11 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID,
 
 	if order == nil {
 		return errors.New("order not found")
+	}
+
+	// If status is already the same, no update needed
+	if order.Status == status {
+		return nil
 	}
 
 	// Validate status transition

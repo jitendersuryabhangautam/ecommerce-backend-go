@@ -23,10 +23,12 @@ type ProductRepository interface {
 	Update(ctx context.Context, id uuid.UUID, updateData *models.ProductUpdateRequest) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	UpdateStock(ctx context.Context, id uuid.UUID, quantity int) error
+	UpdateStockWithTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, quantity int) error
 	GetStock(ctx context.Context, id uuid.UUID) (int, error)
 	ReserveStock(ctx context.Context, productID, cartID uuid.UUID, quantity int, expiresAt int64) error
 	ReleaseStockReservation(ctx context.Context, productID, cartID uuid.UUID) error
 	GetAvailableStock(ctx context.Context, productID uuid.UUID) (int, error)
+	GetAvailableStockExcludingCart(ctx context.Context, productID, cartID uuid.UUID) (int, error)
 }
 
 type productRepository struct {
@@ -57,10 +59,16 @@ func (r *productRepository) Create(ctx context.Context, product *models.Product)
 
 func (r *productRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Product, error) {
 	query := `
-        SELECT id, sku, name, description, price, stock_quantity, category, image_url, 
-               created_at, updated_at
-        FROM products
-        WHERE id = $1
+        SELECT 
+            p.id, p.sku, p.name, p.description, p.price,
+            p.stock_quantity - COALESCE(SUM(sr.quantity), 0) as available_stock,
+            p.category, p.image_url, p.created_at, p.updated_at
+        FROM products p
+        LEFT JOIN stock_reservations sr ON p.id = sr.product_id 
+            AND sr.expires_at > NOW()
+        WHERE p.id = $1
+        GROUP BY p.id, p.sku, p.name, p.description, p.price, p.stock_quantity,
+                 p.category, p.image_url, p.created_at, p.updated_at
     `
 
 	var product models.Product
@@ -78,6 +86,9 @@ func (r *productRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.
 	)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -86,10 +97,16 @@ func (r *productRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.
 
 func (r *productRepository) GetBySKU(ctx context.Context, sku string) (*models.Product, error) {
 	query := `
-        SELECT id, sku, name, description, price, stock_quantity, category, image_url, 
-               created_at, updated_at
-        FROM products
-        WHERE sku = $1
+        SELECT 
+            p.id, p.sku, p.name, p.description, p.price,
+            p.stock_quantity - COALESCE(SUM(sr.quantity), 0) as available_stock,
+            p.category, p.image_url, p.created_at, p.updated_at
+        FROM products p
+        LEFT JOIN stock_reservations sr ON p.id = sr.product_id 
+            AND sr.expires_at > NOW()
+        WHERE p.sku = $1
+        GROUP BY p.id, p.sku, p.name, p.description, p.price, p.stock_quantity,
+                 p.category, p.image_url, p.created_at, p.updated_at
     `
 
 	var product models.Product
@@ -107,6 +124,9 @@ func (r *productRepository) GetBySKU(ctx context.Context, sku string) (*models.P
 	)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -143,10 +163,17 @@ func (r *productRepository) GetAll(ctx context.Context, page, limit int, categor
 
 	// Get products with pagination
 	productsQuery := fmt.Sprintf(`
-        SELECT id, sku, name, description, price, stock_quantity, category, image_url, 
-               created_at, updated_at
-        FROM products %s
-        ORDER BY created_at DESC
+        SELECT 
+            p.id, p.sku, p.name, p.description, p.price, 
+            p.stock_quantity - COALESCE(SUM(sr.quantity), 0) as available_stock,
+            p.category, p.image_url, p.created_at, p.updated_at
+        FROM products p
+        LEFT JOIN stock_reservations sr ON p.id = sr.product_id 
+            AND sr.expires_at > NOW()
+        %s
+        GROUP BY p.id, p.sku, p.name, p.description, p.price, p.stock_quantity, 
+                 p.category, p.image_url, p.created_at, p.updated_at
+        ORDER BY p.created_at DESC
         LIMIT $%d OFFSET $%d
     `, whereClause, argCount, argCount+1)
 
@@ -190,7 +217,7 @@ func (r *productRepository) GetAllAdmin(ctx context.Context, page, limit, rangeD
 	argCount := 1
 
 	if rangeDays > 0 {
-		whereClause += fmt.Sprintf(" AND created_at >= NOW() - ($%d || ' days')::interval", argCount)
+		whereClause += fmt.Sprintf(" AND created_at >= NOW() - $%d * INTERVAL '1 day'", argCount)
 		args = append(args, rangeDays)
 		argCount++
 	}
@@ -203,10 +230,17 @@ func (r *productRepository) GetAllAdmin(ctx context.Context, page, limit, rangeD
 	}
 
 	query := fmt.Sprintf(`
-        SELECT id, sku, name, description, price, stock_quantity, category, image_url,
-               created_at, updated_at
-        FROM products %s
-        ORDER BY created_at DESC
+        SELECT 
+            p.id, p.sku, p.name, p.description, p.price,
+            p.stock_quantity - COALESCE(SUM(sr.quantity), 0) as available_stock,
+            p.category, p.image_url, p.created_at, p.updated_at
+        FROM products p
+        LEFT JOIN stock_reservations sr ON p.id = sr.product_id 
+            AND sr.expires_at > NOW()
+        %s
+        GROUP BY p.id, p.sku, p.name, p.description, p.price, p.stock_quantity,
+                 p.category, p.image_url, p.created_at, p.updated_at
+        ORDER BY p.created_at DESC
         LIMIT $%d OFFSET $%d
     `, whereClause, argCount, argCount+1)
 
@@ -248,7 +282,7 @@ func (r *productRepository) GetTopProducts(ctx context.Context, limit, rangeDays
 	argCount := 1
 
 	if rangeDays > 0 {
-		whereClause += fmt.Sprintf(" AND o.created_at >= NOW() - ($%d || ' days')::interval", argCount)
+		whereClause += fmt.Sprintf(" AND o.created_at >= NOW() - $%d * INTERVAL '1 day'", argCount)
 		args = append(args, rangeDays)
 		argCount++
 	}
@@ -378,6 +412,19 @@ func (r *productRepository) UpdateStock(ctx context.Context, id uuid.UUID, quant
 	return err
 }
 
+func (r *productRepository) UpdateStockWithTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, quantity int) error {
+	query := `
+        UPDATE products 
+        SET stock_quantity = stock_quantity + $1, updated_at = NOW()
+        WHERE id = $2 AND stock_quantity + $1 >= 0
+        RETURNING stock_quantity
+    `
+
+	var newStock int
+	err := tx.QueryRow(ctx, query, quantity, id).Scan(&newStock)
+	return err
+}
+
 func (r *productRepository) GetStock(ctx context.Context, id uuid.UUID) (int, error) {
 	query := "SELECT stock_quantity FROM products WHERE id = $1"
 
@@ -487,6 +534,27 @@ func (r *productRepository) GetAvailableStock(ctx context.Context, productID uui
 
 	var available int
 	err := r.db.QueryRow(ctx, query, productID).Scan(&available)
+	if err != nil {
+		return 0, err
+	}
+
+	return available, nil
+}
+
+func (r *productRepository) GetAvailableStockExcludingCart(ctx context.Context, productID, cartID uuid.UUID) (int, error) {
+	query := `
+        SELECT 
+            p.stock_quantity - COALESCE(SUM(sr.quantity), 0) as available
+        FROM products p
+        LEFT JOIN stock_reservations sr ON p.id = sr.product_id 
+            AND sr.expires_at > NOW()
+            AND sr.cart_id != $2
+        WHERE p.id = $1
+        GROUP BY p.id, p.stock_quantity
+    `
+
+	var available int
+	err := r.db.QueryRow(ctx, query, productID, cartID).Scan(&available)
 	if err != nil {
 		return 0, err
 	}

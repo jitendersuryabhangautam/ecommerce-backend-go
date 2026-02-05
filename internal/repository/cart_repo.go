@@ -70,6 +70,9 @@ func (r *cartRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Car
 	)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 

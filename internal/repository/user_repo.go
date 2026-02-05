@@ -151,7 +151,7 @@ func (r *userRepository) GetAll(ctx context.Context, page, limit, rangeDays int)
 	argCount := 1
 
 	if rangeDays > 0 {
-		whereClause += " AND created_at >= NOW() - ($" + fmt.Sprintf("%d", argCount) + " || ' days')::interval"
+		whereClause += fmt.Sprintf(" AND created_at >= NOW() - $%d * INTERVAL '1 day'", argCount)
 		args = append(args, rangeDays)
 		argCount++
 	}

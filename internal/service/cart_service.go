@@ -206,7 +206,8 @@ func (s *cartService) ValidateCart(ctx context.Context, cartID uuid.UUID) (bool,
 	valid := true
 
 	for _, item := range cart.Items {
-		available, err := s.productSvc.CheckStock(ctx, item.ProductID, item.Quantity)
+		// Check stock excluding this cart's own reservations
+		available, err := s.productSvc.CheckStockForCart(ctx, item.ProductID, cartID, item.Quantity)
 		if err != nil {
 			return false, nil, err
 		}
