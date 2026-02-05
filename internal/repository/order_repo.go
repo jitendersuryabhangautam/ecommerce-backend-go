@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -191,6 +192,7 @@ func (r *orderRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*mode
 	query := `
         SELECT 
             o.id, o.user_id, o.order_number, o.total_amount, o.status, o.payment_method,
+            o.shipping_address, o.billing_address,
             o.created_at, o.updated_at,
             u.id, u.email
         FROM orders o
@@ -199,6 +201,7 @@ func (r *orderRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*mode
     `
 
 	var order models.AdminOrder
+	var shippingJSON, billingJSON []byte
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&order.ID,
 		&order.UserID,
@@ -206,6 +209,8 @@ func (r *orderRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*mode
 		&order.TotalAmount,
 		&order.Status,
 		&order.PaymentMethod,
+		&shippingJSON,
+		&billingJSON,
 		&order.CreatedAt,
 		&order.UpdatedAt,
 		&order.User.ID,
@@ -220,6 +225,19 @@ func (r *orderRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*mode
 		fmt.Printf("[ORDER REPO ERROR] Database error: %v\n", err)
 		return nil, err
 	}
+
+	// Unmarshal shipping address
+	if err := json.Unmarshal(shippingJSON, &order.ShippingAddress); err != nil {
+		fmt.Printf("[ORDER REPO ERROR] Failed to unmarshal shipping address: %v\n", err)
+		return nil, err
+	}
+
+	// Unmarshal billing address
+	if err := json.Unmarshal(billingJSON, &order.BillingAddress); err != nil {
+		fmt.Printf("[ORDER REPO ERROR] Failed to unmarshal billing address: %v\n", err)
+		return nil, err
+	}
+
 	fmt.Printf("[ORDER REPO SUCCESS] Order found: %s\n", order.OrderNumber)
 
 	itemsQuery := `

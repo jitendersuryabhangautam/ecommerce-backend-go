@@ -17,16 +17,18 @@ type AdminOrderItem struct {
 }
 
 type AdminOrder struct {
-	ID            uuid.UUID        `json:"id"`
-	UserID        uuid.UUID        `json:"user_id"`
-	User          AdminUserSummary `json:"user"`
-	OrderNumber   string           `json:"order_number"`
-	TotalAmount   float64          `json:"total_amount"`
-	Status        OrderStatus      `json:"status"`
-	PaymentMethod string           `json:"payment_method"`
-	Items         []AdminOrderItem `json:"items"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
+	ID              uuid.UUID        `json:"id"`
+	UserID          uuid.UUID        `json:"user_id"`
+	User            AdminUserSummary `json:"user"`
+	OrderNumber     string           `json:"order_number"`
+	TotalAmount     float64          `json:"total_amount"`
+	Status          OrderStatus      `json:"status"`
+	PaymentMethod   string           `json:"payment_method"`
+	ShippingAddress Address          `json:"shipping_address"`
+	BillingAddress  Address          `json:"billing_address"`
+	Items           []AdminOrderItem `json:"items"`
+	CreatedAt       time.Time        `json:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at"`
 }
 
 type AdminReturnOrderSummary struct {
